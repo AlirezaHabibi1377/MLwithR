@@ -1,0 +1,246 @@
+# In this script, I have implemented a few machine learning algorithms in 
+# conjunction with feature selection algorithms (Genetic algorithm).
+# (Part of the complete code of Master's thesis)
+
+library(caret)
+library(FSinR)
+library(writexl)
+library(Boruta)
+library(earth)
+
+str(FeatureTrain)
+head(FeatureTrain)
+summary(FeatureTrain)
+str(FeatureTest)
+head(FeatureTest)
+summary(FeatureTest)
+str(AllData)
+head(AllData)
+summary(AllData)
+################################################################################
+
+AllData[["Label"]] = factor(AllData[["Label"]])
+FeatureTrain[["Label"]] = factor(FeatureTrain[["Label"]])
+FeatureTest[["Label"]] = factor(FeatureTest[["Label"]])
+FeatureTrain$FlowAccumulation=NULL
+FeatureTrain$Curvature=NULL
+FeatureTrain$SPI=NULL
+FeatureTrain$TRI=NULL
+########################## Z-Score Standardize #################################
+## Normilize Train data ********************************************************
+preproc1TR <- preProcess(FeatureTrain[,1:18], method=c("center", "scale"))
+FeatureTrain <- predict(preproc1TR, FeatureTrain)
+summary(FeatureTrain)
+
+## Normilize Test data *********************************************************
+preproc1TE <- preProcess(FeatureTest[,1:18], method=c("center", "scale"))
+FeatureTest <- predict(preproc1TE, FeatureTest)
+summary(FeatureTest)
+
+## Normilize All data *********************************************************
+preproc1TE <- preProcess(AllData[,1:20], method=c("center", "scale"))
+AllData <- predict(preproc1TE, AllData)
+summary(AllData)
+
+
+marsModel <- earth(Label ~ ., data=FeatureTrain) # build model
+ev <- evimp (marsModel) # estimate variable importance
+plot(ev)
+########### Multo collinearity analysis : VIF and TOL ************************
+library(matlib)
+library(car)
+
+r<-cor(AllData[,1:20])
+r  <- inv(r)
+VIF<-diag(r)
+VIF<-data.frame(colnames(AllData[,1:20]),VIF)
+TOL <- (1/VIF[,2])
+TOL<-data.frame(colnames(AllData[,1:20]),TOL)
+######################### show Data #################################################################
+
+library(DataExplorer)
+plot_intro(AllData)
+plot_bar(AllData)
+plot_correlation(AllData)
+
+############ Correlation  between Features *****************************************************
+library(clusterGeneration)
+library(corrplot)
+S=genPositiveDefMat("eigen",dim=18)
+S=genPositiveDefMat("unifcorrmat",dim=18)
+corrplot(cor(FeatureTrain[,1:18]), order = "hclust",type = 'lower')
+library(FSinR)
+# Generates the filter evaluation function
+filter_evaluator <- filterEvaluator('ReliefFeatureSetMeasure')
+# Generates the search function
+search_method <- searchAlgorithm('hillClimbing')
+# Runs the feature selection process
+res <- featureSelection(FeatureTrain, 'Label', search_method, filter_evaluator)
+
+########################################  Feature selection ##############################################
+
+###################### 1) Genetic Algorithm feature selection *******************************************
+
+# Genetic Algorithm feature selection
+set.seed(100)
+sa_obj <- safs(x=FeatureTrain[, 1:18],
+               y=FeatureTrain$Label,
+               safsControl = sa_ctrl)
+sa_obj1 <- safs(x=FeatureTrain[, 1:18],
+               y=FeatureTrain$Label,
+               safsControl = sa_ctrl)
+print(sa_obj1)
+plot(sa_obj)
+# Optimal variables
+print(sa_obj1$optVariables)
+plot(sa_obj1$optVariables)
+
+## A short example
+ctrl <- gafsControl(functions = rfGA,
+                    method = "cv",
+                    number = 3)
+
+rf_search <- gafs(x=FeatureTrain[, 1:18],
+                   y=FeatureTrain$Label,
+                  iters = 10,
+                  gafsControl = ctrl)
+rf_search
+
+
+###################### 1)IG Algorithm for feature selection ***********************************
+evaluator <- filterEvaluator('relief')
+
+weights_IG <- information.gain(Label~., FeatureTrain)
+print(weights_IG)
+
+FeatureTrain_Num[["Label"]] = factor(FeatureTrain_Num[["Label"]])
+library(FSelector)
+weights.ig <- information.gain(Label~., FeatureTrain) 
+subset.ig <- cutoff.k(weights.ig, 5) 
+results.ig <- as.simple.formula(subset.ig, "Label") 
+print(results.ig) 
+
+####################### Machine Learning algorithms ###############################
+
+# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ M1: pcaNNet ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# Bayesian Generalized Linear Model ********************************************
+nnFit = train(Label ~ ., data = FeatureTrain,
+              method = "pcaNNet",
+              trControl = fitControl3,
+              metric = 'Accuracy')
+nnFit
+# Apply model to make prediction on Training set
+anntraining <-predict(nnFit, FeatureTrain) 
+anntraining2 <- predict(nnFit,newdata = FeatureTrain , type="prob")
+anntraining3<- prediction(anntraining2[,"Nonflood"],FeatureTrain$Label)
+# Apply model to make prediction on Testing set
+anntesting <-predict(nnFit, FeatureTest) 
+anntesting2 <- predict(nnFit,newdata = FeatureTest , type="prob")
+anntesting3<- prediction(anntesting2[,"Nonflood"],FeatureTest$Label)
+
+write_xlsx(anntesting2,"anntesting2.xlsx")
+write_xlsx(anntraining2,"anntesting2.xlsx")
+
+# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ M2 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+PLRFit = train(Label ~ ., data = FeatureTrain,
+              method = "plr",
+              trControl = fitControl3,
+              metric = 'Accuracy')
+PLRFit
+
+# Apply model to make prediction on Training set
+PLRtraining <-predict(PLRFit, FeatureTrain) 
+PLRtraining2 <- predict(PLRFit,newdata = FeatureTrain , type="prob")
+PLRtraining3<- prediction(PLRtraining2[,"Nonflood"],FeatureTrain$Label)
+# Apply model to make prediction on Testing set
+PLRtesting <-predict(PLRFit, FeatureTest) 
+PLRtesting2 <- predict(PLRFit,newdata = FeatureTest , type="prob")
+PLRtesting3<- prediction(PLRtesting2[,"Nonflood"],FeatureTest$Label)
+
+write_xlsx(PLRtesting2,"PLRtesting2.xlsx")
+write_xlsx(PLRtraining2,"PLRtraining2.xlsx")
+
+# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ M3: J48 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+MDAFit = train(Label ~ ., data = FeatureTrain,
+               method = "J48",
+               trControl = fitControl3,
+               metric = 'Accuracy')
+
+# Apply model to make prediction on Training set
+MDAtraining <-predict(MDAFit, FeatureTrain) 
+MDAtraining2 <- predict(MDAFit,newdata = FeatureTrain , type="prob")
+MDAtraining3<- prediction(PLRtraining2[,"Nonflood"],FeatureTrain$Label)
+# Apply model to make prediction on Testing set
+MDAtesting <-predict(MDAFit, FeatureTest) 
+MDAtesting2 <- predict(MDAFit,newdata = FeatureTest , type="prob")
+MDAtesting3<- prediction(PLRtesting2[,"Nonflood"],FeatureTest$Label)
+
+write_xlsx(PLRtesting2,"PLRtesting2.xlsx")
+write_xlsx(PLRtraining2,"PLRtraining2.xlsx")
+
+
+################################ plot Confusion Matrix ########################
+
+Model.training.confusion <-confusionMatrix(table(FeatureTrain$Label, ADAtraining),
+                                           mode = 'everything')
+
+Model.testing.confusion <-confusionMatrix(table(FeatureTest$Label,ADAtesting),
+                                          mode = 'everything')
+
+ctable <- as.table(Model.training.confusion, nrow = 2, byrow = TRUE)
+
+fourfoldplot(ctable, color = c("#CC6666", "#99CC99"),
+             conf.level = 0, margin = 1, main = "Confusion Matrix (SVM)")
+
+ctable2 <- as.table(Model.testing.confusion, nrow = 2, byrow = TRUE)
+
+fourfoldplot(ctable2, color = c("#CC6666", "#99CC99"),
+             conf.level = 0, margin = 1, main = "Confusion Matrix(SVM)")
+
+print(Model.training.confusion)
+
+print(Model.testing.confusion)
+
+write.csv(Model.training.confusion, "metric_GAMBoost_Train.csv", row.names=TRUE, quote=TRUE) 
+
+
+########################## Z-Score Standardize ################################
+## Normilize AllCase data *****************************************************
+preproc1TR <- preProcess(CaseStudy_Haraz, method=c("center", "scale"))
+
+CaseStudy_Haraz <- predict(preproc1TR, CaseStudy_Haraz)
+
+summary(CaseStudy_Haraz)
+
+
+Model.CaseStudy <-predict(test_class_cv_model, CaseStudy_Haraz[,1:11]) # Apply model to make prediction on Testing set
+Model.CaseStudy2 <- predict(test_class_cv_model,newdata = CaseStudy_Haraz[,1:11] ,"prob")
+write_xlsx(Model.CaseStudy2,"ScoresCaseSVMpolynomial.xlsx")
+
+
+ff= data.frame(Model.CaseStudy)
+
+# Feature importance
+Importance <- varImp(Model)
+plot(Importance)
+plot(Importance, col = "red")
+
+### Case Study Scores ****************************************************
+
+AllEndCase$Curvature =NULL
+AllEndCase$FlowAccumulation=NULL
+AllEndCase$OBJECTID=NULL
+AllEndCase$FID=NULL
+preproc1TR <- preProcess(AllEndCase[,1:20], method=c("center", "scale"))
+AllEndCase <- predict(preproc1TR, AllEndCase)
+summary(AllEndCase)
+
+#### 3 ) for feature selection
+
+AllEndCase$Aspect=NULL
+AllEndCase$planCurvature=NULL
+AllEndCase$FlowDirection=NULL
+AllEndCase$DriangeDensity=NULL
+AllEndCase$SPI=NULL
+AllEndCase$ConvergenceIndex=NULL
+AllEndCase$SLF=NULL
